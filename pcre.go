@@ -625,8 +625,15 @@ func (re Regexp) ReplaceAllString(in, repl string, flags int) (string, error) {
 
 // Match holds details about a single successful regex match.
 type Match struct {
-	Finding string // Text that was found.
-	Loc     []int  // Index bounds for location of finding.
+	Finding string  // Text that was found.
+	Loc     []int   // Index bounds for location of finding.
+	Groups  []Group //
+}
+
+// Match holds details about a single successful regex match.
+type Group struct {
+	Finding string  // Text that was found.
+	Loc     []int   // Index bounds for location of finding.
 }
 
 // FindAll finds all instances that match the regex.
@@ -641,13 +648,19 @@ func (re Regexp) FindAllOffset(subject string, flags int, offset int) ([]Match, 
 	for m.Matches() {
 		leftIdx := int(m.ovector[0]) + offset
 		rightIdx := int(m.ovector[1]) + offset
-		matches = append(
-			matches,
-			Match{
-				subject[leftIdx:rightIdx],
-				[]int{leftIdx, rightIdx},
-			},
-		)
+		var groups []Group
+		for index := 0; index <= m.Groups(); index++ {
+			group := Group{
+				Finding: m.GroupString(index),
+				Loc:     m.GroupIndices(index),
+			}
+			groups = append(groups, group)
+		}
+		matches = append(matches, Match{
+			subject[leftIdx:rightIdx],
+			[]int{leftIdx, rightIdx},
+			groups,
+		})
 		offset += maxInt(1, int(m.ovector[1]))
 		if offset < len(subject) {
 			m.MatchString(subject[offset:], flags)
