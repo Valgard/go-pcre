@@ -631,9 +631,13 @@ type Match struct {
 
 // FindAll finds all instances that match the regex.
 func (re Regexp) FindAll(subject string, flags int) ([]Match, error) {
+	return re.FindAllOffset(subject, flags, 0)
+}
+
+// FindAll finds all instances that match the regex.
+func (re Regexp) FindAllOffset(subject string, flags int, offset int) ([]Match, error) {
 	matches := make([]Match, 0)
-	m := re.MatcherString(subject, flags)
-	offset := 0
+	m := re.MatcherString(subject[offset:], flags)
 	for m.Matches() {
 		leftIdx := int(m.ovector[0]) + offset
 		rightIdx := int(m.ovector[1]) + offset
