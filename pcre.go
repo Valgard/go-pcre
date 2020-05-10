@@ -160,6 +160,24 @@ func pcreGroups(ptr *C.pcre) (count C.int) {
 	return
 }
 
+func pcreNamedGroups(ptr *C.pcre) (count C.int) {
+	C.pcre_fullinfo(ptr, nil,
+		C.PCRE_INFO_NAMECOUNT, unsafe.Pointer(&count))
+	return
+}
+
+func pcreNamedGroupsEntrySize(ptr *C.pcre) (size C.int) {
+	C.pcre_fullinfo(ptr, nil,
+		C.PCRE_INFO_NAMEENTRYSIZE, unsafe.Pointer(&size))
+	return
+}
+
+func pcreNamedGroupsList(ptr *C.pcre) (cp *C.char) {
+	C.pcre_fullinfo(ptr, nil,
+		C.PCRE_INFO_NAMETABLE, unsafe.Pointer(&cp))
+	return
+}
+
 // Free c allocated memory related to regexp.
 func (re *Regexp) FreeRegexp() {
 	// pcre_free is a function pointer, call a stub that calls it.
@@ -258,6 +276,30 @@ func (re Regexp) Groups() int {
 		panic("Regexp.Groups: uninitialized")
 	}
 	return int(pcreGroups(re.ptr))
+}
+
+func (re Regexp) NamedGroups() map[string]int {
+	if re.ptr == nil {
+		panic("Regexp.NamedGroups: uninitialized")
+	}
+
+	length := int(pcreNamedGroups(re.ptr))
+	entrySize := int(pcreNamedGroupsEntrySize(re.ptr))
+	pc := pcreNamedGroupsList(re.ptr)
+
+	groups := make(map[string]int)
+	for i := 0; i < length; i += 1 {
+		g := (*[1 << 30]byte)(unsafe.Pointer(pc))[i*entrySize : (i+1)*entrySize]
+		s := len(g)
+		for ii, v := range g[2:s] {
+			if int(v) == 0 {
+				s = ii + 2
+				break
+			}
+		}
+		groups[string(g[2:s])] = int(g[1])
+	}
+	return groups
 }
 
 // Matcher objects provide a place for storing match results.
@@ -547,6 +589,15 @@ func (m *Matcher) Index() (loc []int) {
 	return
 }
 
+func (m *Matcher) NamedStringMap() map[string]string {
+	nm := m.re.NamedGroups()
+	sm := make(map[string]string)
+	for k, v := range nm {
+		sm[k] = m.GroupString(v)
+	}
+	return sm
+}
+
 // name2index converts a group name to its group index number.
 func (m *Matcher) name2index(name string) (int, error) {
 	if m.re.ptr == nil {
@@ -625,15 +676,16 @@ func (re Regexp) ReplaceAllString(in, repl string, flags int) (string, error) {
 
 // Match holds details about a single successful regex match.
 type Match struct {
-	Finding string  // Text that was found.
-	Loc     []int   // Index bounds for location of finding.
-	Groups  []Group //
+	Finding     string  // Text that was found.
+	Loc         []int   // Index bounds for location of finding.
+	Groups      []Group //
+	NamedGroups map[string]int
 }
 
 // Match holds details about a single successful regex match.
 type Group struct {
-	Finding string  // Text that was found.
-	Loc     []int   // Index bounds for location of finding.
+	Finding string // Text that was found.
+	Loc     []int  // Index bounds for location of finding.
 }
 
 // FindAll finds all instances that match the regex.
@@ -660,6 +712,7 @@ func (re Regexp) FindAllOffset(subject string, flags int, offset int) ([]Match, 
 			subject[leftIdx:rightIdx],
 			[]int{leftIdx, rightIdx},
 			groups,
+			re.NamedGroups(),
 		})
 		offset += maxInt(1, int(m.ovector[1]))
 		if offset < len(subject) {
